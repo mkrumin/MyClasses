@@ -118,9 +118,10 @@ for iCell = 1:nCells
 
         % U-test
         
+        try
         [pValRL(iCell, iGroup), hRL(iCell, iGroup), stat] = ranksum(valuesR, valuesL);
         [pValCW(iCell, iGroup), hCW(iCell, iGroup), stat] = ranksum(valuesC, valuesW);
-
+        end
 %         valuesR = nanmean(tracesStimR, 2);
 %         valuesL = nanmean(tracesStimL, 2);
 %         valuesR = valuesR(~isnan(valuesR));

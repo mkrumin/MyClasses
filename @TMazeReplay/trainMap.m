@@ -7,6 +7,7 @@ options = fillOptions(obj, options);
 
 fData = obj.data2p{iPlane}.F(:, iROI);
 tData = obj.times2p{iPlane};
+tData = tData - options.delay;
 
 % Fs = 1/median(diff(tData));
 % % notch filter at 2 Hz
@@ -15,12 +16,8 @@ tData = obj.times2p{iPlane};
 % % fvtool(b,a);
 % fData = filtfilt(b,a,fDataRaw);
 
-
 F0 = prctile(fData, 20);
 fData = (fData-F0)/F0;
-
-
-tData = tData - options.delay;
 
 nTrials = obj.nTrials;
 [thAll, zAll, ~] = buildVectors(obj, 1:nTrials, tData, fData);
@@ -51,9 +48,8 @@ end
 % [optStd, errVals, errValMatrix, stdGridValues] = ...
 %         estOptimalStd(coords, fVector, {zEdges, thEdges});
 [optStd, errVals, errValMatrix, stdGridValues] = ...
-        estOptimalStdFaster(coords, fVector, {zEdges, thEdges});
+        estOptimalStdFaster(coords, fVector, {zEdges, thEdges}, options.errPower);
 
-% obj.trainingData{iPlane}(iROI).delay = options.delay;
 obj.trainingData{iPlane}(iROI).optStd = optStd;
 obj.trainingData{iPlane}(iROI).errVals = errVals;
 obj.trainingData{iPlane}(iROI).errValMatrix = errValMatrix;
@@ -62,26 +58,29 @@ obj.trainingData{iPlane}(iROI).zEdges = zEdges;
 obj.trainingData{iPlane}(iROI).thEdges = thEdges;
 
 [theMap, binCentres] = estMap(cell2mat(coords), cell2mat(fVector), {zEdges, thEdges}, optStd);
+[rawMap, ~] = estMap(cell2mat(coords), cell2mat(fVector), {zEdges, thEdges}, [0.2 0.2]);
 
-obj.trainingData{iPlane}(iROI).map = theMap;
-obj.trainingData{iPlane}(iROI).binCentres = binCentres;
+obj.trainingData{iPlane}(iROI).zThetaMap = theMap;
+obj.trainingData{iPlane}(iROI).zThetaBinCentres = binCentres;
 obj.trainingData{iPlane}(iROI).options = options;
+obj.trainingData{iPlane}(iROI).rawDataMap = rawMap;
 
-% plotting the map, useful for debugging
-subplot(1, 2, 1)
-imagesc(binCentres{2}, binCentres{1}, estMap(cell2mat(coords), cell2mat(fVector), {zEdges, thEdges}, [1 1]));
-title(sprintf('iPlane %d, iROI %d', iPlane, iROI), 'FontWeight', 'Normal');
-colorbar;
-clim = caxis;
-axis xy equal tight;
 
-subplot(1, 2, 2)
-imagesc(binCentres{2}, binCentres{1}, theMap);
-colorbar;
-% title(sprintf('iPlane %d, iROI %d, err = %4.3f, delay = %4.2f', iPlane, iROI, errVals, options.delay), 'FontWeight', 'Normal');
-title(sprintf('err = %4.3f, delay = %4.2f', errVals, options.delay), 'FontWeight', 'Normal');
-axis xy equal tight;
-caxis(clim);
+% % plotting the map, useful for debugging
+% subplot(1, 2, 1)
+% imagesc(binCentres{2}, binCentres{1}, estMap(cell2mat(coords), cell2mat(fVector), {zEdges, thEdges}, [1 1]));
+% title(sprintf('iPlane %d, iROI %d', iPlane, iROI), 'FontWeight', 'Normal');
+% colorbar;
+% clim = caxis;
+% axis xy equal tight;
+% 
+% subplot(1, 2, 2)
+% imagesc(binCentres{2}, binCentres{1}, theMap);
+% colorbar;
+% % title(sprintf('iPlane %d, iROI %d, err = %4.3f, delay = %4.2f', iPlane, iROI, errVals, options.delay), 'FontWeight', 'Normal');
+% title(sprintf('err = %4.3f, delay = %4.2f', errVals, options.delay), 'FontWeight', 'Normal');
+% axis xy equal tight;
+% caxis(clim);
 
 end % TrainMap()
 
@@ -106,12 +105,13 @@ if ~isfield(optIn, 'dTheta')
 end
 
 if ~isfield(optIn, 'cvFactor')
-    optOut.cvFactor = 5; %
+    optOut.cvFactor = 'LeaveOneOut'; %
 end
 
-if ~isfield(optIn, 'cvMethod')
-    optOut.cvMethod = 'random'; % 'random' or 'block'
+if ~isfield(optIn, 'errPower')
+    optOut.errPower = 2; %
 end
+
 
 end %fillOptions();
 
@@ -218,7 +218,7 @@ errValue = nanmean(chunkErrors); % mean() works better, maps are smoother and ni
 end % mapError()
 
 %=========================================================================
-function [stdOut, errVal, errValMatrix, gridValues] = estOptimalStdFaster(coords, signal, binEdges)
+function [stdOut, errVal, errValMatrix, gridValues] = estOptimalStdFaster(coords, signal, binEdges, errPow)
 
 coords = coords(:);
 signal = signal(:);
@@ -285,7 +285,7 @@ if nDims == 2
 
         for mInd = 1:length(gridValues{1})
             x1 = gridValues{1}(mInd);
-            errValMatrix(mInd, nInd) = mapError1D(x1, occMapsXORFilt, fMapsXORFilt, meanVal, testXYLinearIdx, signal);
+            errValMatrix(mInd, nInd) = mapError1D(x1, occMapsXORFilt, fMapsXORFilt, meanVal, testXYLinearIdx, signal, errPow);
         end
     end
 else
@@ -304,7 +304,7 @@ end % estOptimalStdFaster()
 
 %==========================================================================
 
-function errValue = mapError1D(x1, occMaps, fMaps, meanF, testXYIdx, testF)
+function errValue = mapError1D(x1, occMaps, fMaps, meanF, testXYIdx, testF, errPow)
 
 x1(x1<0.2) = 0.2; % HACK! This value is in pixels, not real units
 
@@ -338,7 +338,14 @@ for iTrial = 1:nTrials
     meanFTraining = meanF(iTrial);
     % the idea here is to check how much better the map is relative to just
     % using mean F map.
-    chunkErrors(iTrial) = sum((predictedF - testF{iTrial}).^2)/sum((meanFTraining - testF{iTrial}).^2);
+    switch errPow
+        case 1
+            chunkErrors(iTrial) = sum(abs(predictedF - testF{iTrial}))/sum(abs(meanFTraining - testF{iTrial}));
+        case 2
+            chunkErrors(iTrial) = sum((predictedF - testF{iTrial}).^2)/sum((meanFTraining - testF{iTrial}).^2);
+        otherwise
+            chunkErrors(iTrial) = sum(abs(predictedF - testF{iTrial}).^errPow)/sum(abs(meanFTraining - testF{iTrial}).^errPow);
+    end
 end
 % errValue = nanmedian(chunkErrors);
 errValue = nanmean(chunkErrors); % mean() works better, maps are smoother and nicer, "outliers have less effect"

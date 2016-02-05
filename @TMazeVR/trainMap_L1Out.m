@@ -43,7 +43,7 @@ end
 % [optStd, errVals, errValMatrix, stdGridValues] = ...
 %         estOptimalStd(coords, fVector, {zEdges, thEdges});
 [optStd, errVals, errValMatrix, stdGridValues] = ...
-        estOptimalStdFaster(coords, fVector, {zEdges, thEdges});
+        estOptimalStdFaster(coords, fVector, {zEdges, thEdges}, options.errPower);
 
 
 obj.trainingData{iPlane}(iROI).optStd = optStd;
@@ -71,7 +71,6 @@ obj.trainingData{iPlane}(iROI).rawDataMap = rawMap;
 end % TrainMaps()
 
 %==========================================================================
-
 function optOut = fillOptions(obj, optIn)
 
 optOut = optIn;
@@ -96,7 +95,6 @@ end
 end %fillOptions();
 
 %==========================================================================
-
 function [stdOut, errVal, errValMatrix, gridValues] = estOptimalStd(coords, signal, binEdges)
 
 coords = coords(:);
@@ -162,7 +160,6 @@ errVal = errValMatrix(ind);
 end % estOptimalStd()
 
 %==========================================================================
-
 function errValue = mapError(x, occMaps, fMaps, testXYIdx, testF)
 
 x(x<0.2) = 0.2; % HACK! This value is in pixels, not real units
@@ -194,8 +191,7 @@ errValue = nanmean(chunkErrors); % mean() works better, maps are smoother and ni
 end % mapError()
 
 %==========================================================================
-
-function [stdOut, errVal, errValMatrix, gridValues] = estOptimalStdFaster(coords, signal, binEdges)
+function [stdOut, errVal, errValMatrix, gridValues] = estOptimalStdFaster(coords, signal, binEdges, errPow)
 
 coords = coords(:);
 signal = signal(:);
@@ -265,7 +261,7 @@ if nDims == 2
 
         for mInd = 1:length(gridValues{1})
             x1 = gridValues{1}(mInd);
-            errValMatrix(mInd, nInd) = mapError1D(x1, occMapsXORFilt, fMapsXORFilt, meanVal, testXYLinearIdx, signal);
+            errValMatrix(mInd, nInd) = mapError1D(x1, occMapsXORFilt, fMapsXORFilt, meanVal, testXYLinearIdx, signal, errPow);
         end
     end
 else
@@ -283,10 +279,8 @@ errVal = errValMatrix(ind);
 
 end % estOptimalStdFaster()
 
-
 %==========================================================================
-
-function errValue = mapError1D(x1, occMaps, fMaps, meanF, testXYIdx, testF)
+function errValue = mapError1D(x1, occMaps, fMaps, meanF, testXYIdx, testF, errPow)
 
 x1(x1<0.2) = 0.2; % HACK! This value is in pixels, not real units
 
@@ -320,7 +314,14 @@ for iTrial = 1:nTrials
     meanFTraining = meanF(iTrial);
     % the idea here is to check how much better the map is relative to just
     % using mean F map.
-    chunkErrors(iTrial) = sum((predictedF - testF{iTrial}).^2)/sum((meanFTraining - testF{iTrial}).^2);
+    switch errPow
+        case 1
+            chunkErrors(iTrial) = sum(abs(predictedF - testF{iTrial}))/sum(abs(meanFTraining - testF{iTrial}));
+        case 2
+            chunkErrors(iTrial) = sum((predictedF - testF{iTrial}).^2)/sum((meanFTraining - testF{iTrial}).^2);
+        otherwise
+            chunkErrors(iTrial) = sum(abs(predictedF - testF{iTrial}).^errPow)/sum(abs(meanFTraining - testF{iTrial}).^errPow);
+    end
 end
 % errValue = nanmedian(chunkErrors);
 errValue = nanmean(chunkErrors); % mean() works better, maps are smoother and nicer, "outliers have less effect"

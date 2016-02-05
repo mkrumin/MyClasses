@@ -12,7 +12,7 @@ accMap = full(sparse(cc(:,1), cc(:,2), signal, nBins(1), nBins(2)));
 
 return;
 
-% this code is about 100 times slower... (after major optimization effort)
+% this code is about 100 times slower... (even after major optimization effort)
 
 [nSamples, nDims] = size(coords);
 indices = cell(nDims, 1);

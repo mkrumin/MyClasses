@@ -14,7 +14,7 @@ end
 % pre-allocating
 thVector = nan(nSamples, 1);
 zVector = nan(nSamples, 1);
-fVector = nan(nSamples, 1);
+fVector = nan(nSamples, size(fData, 2));
 tVector = nan(nSamples, 1);
 
 nSamplesAccum = 0;
@@ -30,7 +30,7 @@ for trialNum = 1:length(trialIdx)
     sampleIdx = nSamplesAccum+1:nSamplesAccum+nSamplesThisTrial;
     thVector(sampleIdx) = obj.dataTMaze.SESSION.allTrials(iTrial).posdata(idx, thInd);
     zVector(sampleIdx) = -obj.dataTMaze.SESSION.allTrials(iTrial).posdata(idx, zInd);
-    fVector(sampleIdx) = interp1(tData, fData, tt);
+    fVector(sampleIdx, :) = interp1(tData, fData, tt);
     tVector(sampleIdx) = tt;
     nSamplesAccum = nSamplesAccum + nSamplesThisTrial;
 end
