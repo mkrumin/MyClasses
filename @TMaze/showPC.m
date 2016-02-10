@@ -57,7 +57,8 @@ ylabel('Rightward Choice Probability');
 set(axesHandle, 'XTick', cc, 'YTick', [0:0.2:1]);
 axis square;
 
-text(min(cc), max(ylim)-0.02*(diff(ylim)), sprintf('nTrials = %d', length(obj.contrastSequence)), ...
+nTrials = sum(obj.pcData.nn);
+text(min(cc), max(ylim)-0.02*(diff(ylim)), sprintf('nTrials = %d', nTrials), ...
     'HorizontalAlignment', 'left', 'VerticalAlignment', 'top');
 
 end % showPC()
