@@ -15,6 +15,9 @@ nChunks = options.cvFactor;
 fData = obj.data2p{iPlane}.F(:, iROI);
 tData = obj.times2p{iPlane};
 
+f0 = prctile(fData, 20);
+fData = (fData-f0)/f0;
+
 figHandle = gcf;
 clf(figHandle, 'reset');
 set(figHandle, 'Name', sprintf('ROI # %d processing...', iROI));
@@ -182,13 +185,13 @@ subplot(nRows, nColumns, [nColumns-1, nColumns]);
 obj.ShowROI(iPlane, iROI);
 
 hData = subplot(nRows, nColumns, [1, 2*nColumns-2]);
-plot(tData, fData, 'b');
+plot(tData, fData, 'b', 'LineWidth', 1);
 hold on;
-plot(tData, fDataModel, 'r:', 'LineWidth', 2);
+plot(tData, fDataModel, 'r', 'LineWidth', 1);
 xlim([tData(1), tData(end)]);
 yrange = [min([fData(:); fDataModel(:)]), max([fData(:); fDataModel(:)])];
 ylim(yrange);
-ylabel('F');
+ylabel('\DeltaF/F');
 
 % hModel = subplot(nRows, nColumns, [nColumns+1:2*nColumns-2]);
 % plot(tData, fDataModel, 'b', tData, fGlobalModel, 'r');
@@ -198,8 +201,8 @@ ylabel('F');
 % ylabel('F_{model}');
 
 pos = get(gca, 'Position');
-hleg = legend('data', 'model');
-set(hleg, 'Location', 'NorthEast');
+hleg = legend('Data', 'Model');
+set(hleg, 'Location', 'NorthEast', 'Box', 'off');
 set(gca, 'Position', pos);
 
 % linkaxes([hData, hModel], 'xy');
@@ -358,7 +361,6 @@ rho = tmp(2);
 % tmp = corrcoef(fData(idx), fGlobalModel(idx));
 tmp = corrcoef(fMeanData(idx), fMeanUnscaled(idx));
 rho2 = tmp(2);
-
 
 pos = get(gca, 'Position');
 
