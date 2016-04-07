@@ -1,6 +1,5 @@
-function plotSnakes(data, results)
+function plotSnakesSimple(data, results)
 
-scaleByContrast = true;
 separateLRColormaps = false;
 climPrctiles = [50 99];
 margin = 0.0;
@@ -91,9 +90,9 @@ for iDataset = 1:nDatasets
         end
         
  
-        % get the smoothing parameter used during training
+        % get the smoothing parameter used in trining
         for iCell = 1:length(cellNumbers)
-            % the value in [pixels], translated into [cm]
+            % the value in pixels is calculated in [cm]
             zStd{iPlane}(1, iCell) = res{iPlane}(cellNumbers(iCell)).optStd(1)*...
                 res{iPlane}(cellNumbers(iCell)).options.dZ;
         end
@@ -137,13 +136,6 @@ for iDataset = 1:nDatasets
     for iCell = 1:nCells
         hGauss = ndGaussian(zStd(iCell));
         fTraces(:,iCell, :) = imfilter(fTraces(:, iCell, :), hGauss(:), 'replicate', 'same');
-    end
-    
-    if scaleByContrast
-        cSequence = obj.dataTMaze.contrastSequence(idxAll);
-        cValues = unique(cSequence);
-        [~, cIndices] = ismember(cSequence, cValues);
-        fTracesModelScaled = scaleMaps(fTraces, fTracesModel, cIndices);        
     end
     
     meanAll{iDataset} = nanmean(fTraces, 3);
