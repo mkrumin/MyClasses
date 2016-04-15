@@ -1,8 +1,8 @@
 function plotSnakesSimple(data, results)
 
-separateLRColormaps = false;
+separateLRColormaps = true;
 climPrctiles = [50 99];
-margin = 0.0;
+margin = 0.1;
 
 nDatasets = length(data);
 for iDataset = 1:nDatasets
@@ -253,6 +253,8 @@ else
     climsR = clims;
     climsL = clims;
 end
+climsR = [0 1];
+climsL = [0 1];
 
 % subplot(4, 4, 9)
 % imagesc(zAxis, 1:nCellsL, meanL(:, order(ismember(order, prefL)))');
