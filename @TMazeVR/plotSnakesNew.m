@@ -1,10 +1,13 @@
 function plotSnakesNew(data, results)
 
+%% setting some parameters
 scaleByContrast = true;
 separateLRColormaps = false;
 climPrctiles = [50 99];
-margin = 0.05;
+margin = 0.1;
+correctOnly = true;
 
+%% extract and re-organize data
 nDatasets = length(data);
 for iDataset = 1:nDatasets
     fprintf('iDataset %d/%d\n', iDataset, nDatasets);
@@ -17,6 +20,10 @@ for iDataset = 1:nDatasets
     
     idxL = extras.report == 'L';
     idxR = extras.report == 'R';
+    if correctOnly
+        idxL = idxL & extras.outcome == 'C';
+        idxR = idxR & extras.outcome == 'C';
+    end
     meanAll{iDataset} = nanmean(fTraces, 3);
     meanL{iDataset} = nanmean(fTraces(:,:,idxL), 3);
     meanR{iDataset} = nanmean(fTraces(:,:,idxR), 3);
@@ -43,7 +50,7 @@ end % iDataset
 % average across trials to find mean response
 % use this to normalize the traces and to get latency;
 
-%% plotting
+%% calculate mean responses, for L and R trials, and also separate by contrast
 fTracesMean = cell2mat(meanAll);
 meanL = cell2mat(meanL);
 meanR = cell2mat(meanR);
@@ -253,18 +260,18 @@ xlabel('z [cm]');
 axis xy
 colorbar
 
-%%
+%% SF centers plot, all contrasts on one plot
 figure
-plot(sfCenters(2, prefL), sfCenters(1, prefL), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'r')
+plot(sfCenters(2, prefL), sfCenters(1, prefL), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
 hold on;
-h = plot(sfCenters(2, prefR), sfCenters(1, prefR), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'b')
+plot(sfCenters(2, prefR), sfCenters(1, prefR), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
 
 xlabel('\theta [deg]')
 ylabel('z [cm]')
 title('Position of SF centers');
 % histogram(sfCenters(2, prefL), 20)
 % histogram(sfCenters(2, prefR), 20)
-leg = legend('L_{pref} Cells', 'R_{pref} Cells')'
+leg = legend('L_{pref} Cells', 'R_{pref} Cells');
 set(leg, 'Location', 'bestoutside');
 
 plot([0 0], ylim, 'k:');
@@ -272,12 +279,13 @@ axis equal
 xlim([-30 30]);
 ylim([5 105]);
 
-%% plotting contrast-wise SF position map
+%% plotting contrast-wise SF position maps
 figure
 respLGlobal = max(meanL);
 respRGlobal = max(meanR);
 for iContrast = 1:nContrasts
-    subplot(1, nContrasts, iContrast);
+%     h(iContrast) =subplot(2, 3, iContrast);
+    h(iContrast) = axes('OuterPosition', [(iContrast-1)/nContrasts, 0, 1/nContrasts, 1]);
     respL = max(meanLC{iContrast});
     respR = max(meanRC{iContrast});
     R = (respR+respL);
@@ -301,7 +309,7 @@ for iContrast = 1:nContrasts
     scatter(sfCenters(2, idx), sfCenters(1, idx), 10*R(idx), colorVector(idx, :), 'filled', 'MarkerEdgeColor', 0.5*[1 1 1]);
 %     scatter(sfCenters(2, idx), sfCenters(1, idx), 10*R(idx), colorVector(idx, :), 'filled');
 %     scatter(sfCenters(2, idx), sfCenters(1, idx), 10*R(idx), colorVector(idx, :), 'filled');
-    title(cValues(iContrast))
+    title(['\pm' sprintf('%d%%', cValues(iContrast))])
     xlim([-30 30]);
     ylim([5 105]);
     
@@ -318,12 +326,57 @@ for iContrast = 1:nContrasts
     idxL = score<0;
     cumR  = sparse(zBins(idxR), thBins(idxR), score(idxR));
     cumL  = sparse(zBins(idxL), thBins(idxL), score(idxL));
+    cumR = cumR/sum(cumR(:))*50;
+    cumL = cumL/sum(cumL(:))*50;
 %     figure
 hold on;
-    plot(thAxis, sum(cumR, 1), 'c', thAxis, sum(-cumL, 1), 'm', 'LineWidth', 3)
-    plot(sum(cumR, 2)-30, zAxis, 'c:', sum(-cumL, 2)-30, zAxis, 'm:', 'LineWidth', 3)
+%     plot(thAxis, sum(cumR, 1), 'c', thAxis, sum(-cumL, 1), 'm', 'LineWidth', 3)
+%     plot(sum(cumR, 2)-30, zAxis, 'c:', sum(-cumL, 2)-30, zAxis, 'm:', 'LineWidth', 3)
+    baseValue = min(ylim);
+    b(1) = bar(thAxis, -[sum(cumL, 1)]+baseValue, 'BaseValue', baseValue, ...
+        'FaceColor', [1 0.5 0.5], 'EdgeColor', 'r', 'LineWidth', 2);
+    b(2) = bar(thAxis, -[sum(cumR, 1)]+baseValue, 'BaseValue', baseValue, ...
+        'FaceColor', 'none', 'EdgeColor', 'b', 'LineWidth', 2);
+    baseValue = -30;
+    b(3) = barh(zAxis, -2*[sum(cumL, 2)]+baseValue, 'BaseValue', baseValue, ...
+        'FaceColor', [1 0.5 0.5], 'EdgeColor', 'r', 'LineWidth', 2);
+    b(4) = barh(zAxis, -2*[sum(cumR, 2)]+baseValue, 'BaseValue', baseValue, ...
+        'FaceColor', 'none', 'EdgeColor', 'b', 'LineWidth', 2);
+    set(b, 'ShowBaseline', 'off')
+    axis tight off
+    
+    zCenterR = sum(sfCenters(1, idxR).*score(idxR))/sum(score(idxR));
+    zSpreadR = sqrt(sum((sfCenters(1, idxR)-zCenterR).^2.*score(idxR))/sum(score(idxR)));
+    thCenterR = sum(sfCenters(2, idxR).*score(idxR))/sum(score(idxR));
+    thSpreadR = sqrt(sum((sfCenters(2, idxR)-thCenterR).^2.*score(idxR))/sum(score(idxR)));
+
+    zCenterL = sum(sfCenters(1, idxL).*score(idxL))/sum(score(idxL));
+    zSpreadL = sqrt(sum((sfCenters(1, idxL)-zCenterL).^2.*score(idxL))/sum(score(idxL)));
+    thCenterL = sum(sfCenters(2, idxL).*score(idxL))/sum(score(idxL));
+    thSpreadL = sqrt(sum((sfCenters(2, idxL)-thCenterL).^2.*score(idxL))/sum(score(idxL)));
+    
+    plot(thCenterL + [-1 1]*thSpreadL, [zCenterL, zCenterL], 'r', 'LineWidth', 3);
+    plot([thCenterL, thCenterL], zCenterL + [-1 1]*zSpreadL , 'r', 'LineWidth', 3);
+    plot(thCenterR + [-1 1]*thSpreadR, [zCenterR, zCenterR], 'b', 'LineWidth', 3);
+    plot([thCenterR, thCenterR], zCenterR + [-1 1]*zSpreadR , 'b', 'LineWidth', 3);
+
 end
-%%  
+
+% equalize the axes limits
+for iH = 1:length(h)
+    axes(h(iH));
+    xx(iH,:) = xlim;
+    yy(iH,:) = ylim;
+end
+xx = [min(xx(:, 1)), max(xx(:, 2))];
+yy = [min(yy(:, 1)), max(yy(:, 2))];
+for iH = 1:length(h)
+    axes(h(iH));
+    xlim(xx);
+    ylim(yy);
+end
+
+%% plotting snakes, data separated by contrast
 
 doColorbar = false;
 for iContrast = 1:nContrasts
@@ -405,5 +458,3 @@ for iContrast = 1:nContrasts
     colorbar;
     end
 end
-
-% keyboard;
