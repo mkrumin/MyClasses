@@ -17,8 +17,12 @@ switch nDims
         % as there is normalization at the end of the function
         h = exp(-(t.^2)/(2*x(1)^2));
     case 2
-        h = fspecial('gaussian', [sz(1) 1], x(1)) * ...
-            fspecial('gaussian', [1 sz(2)], x(2));
+%         h = fspecial('gaussian', [sz(1) 1], x(1)) * ...
+%             fspecial('gaussian', [1 sz(2)], x(2));
+        t1 = [-((sz(1)-1)/2):((sz(1)-1)/2)]';
+        t2 = -((sz(2)-1)/2):((sz(2)-1)/2);
+        h = exp(-(t1.^2)/(2*x(1)^2)) * ...
+            exp(-(t2.^2)/(2*x(2)^2));
     otherwise
         fprintf('ndGaussian not implementd for %d dimensions yet\n', nDims);
 end

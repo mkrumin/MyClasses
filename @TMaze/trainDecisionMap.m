@@ -41,10 +41,11 @@ for iC = 1:nContrasts
 %     th = thMat(:, trialIdx);
 %     d = dMat(:, trialIdx);
     
-    filterStd = getOptStdCV(occMap(:,:,trialIdx), accumMap(:,:,trialIdx), Inf);
+    filterStd = getOptStd(occMap(:,:,trialIdx), accumMap(:,:,trialIdx), Inf);
     map{iC} = filterAndDivideMaps(sum(occMap(:,:,trialIdx), 3), sum(accumMap(:,:,trialIdx), 3), ndGaussian(filterStd), 0.01);
     res(iC).std = filterStd;
 end
+reshape(res, size(map));
 
 %==================================================================================
 function [z, th, d] = getTraces(obj, trIdx)
@@ -94,9 +95,78 @@ travel = [0; cumsum(sqrt(sum(dCoords.^2, 2))+eps(1000))];
 travelOut = linspace(0, travel(end), nPoints);
 coordsOut = interp1(travel, coordsIn, travelOut);
 
-function filterStd = getOptStdCV(occMap, accumMap, cvFactor)
+function [filterStd, cvErr] = getOptStd(occMap, accumMap, cvFactor)
 
-nTrials = size(occMap, 3);
-filterStd = [1 1];
+[nZ, nTh, nTrials] = size(occMap);
+filterStd = [nan nan];
+cvErr = nan;
+epsilon = 0.01;
 
+% define the grid of z and th for the search
+pow = 3;
+zGrid = linspace(0.5^(1/pow), nZ^(1/pow), 15).^pow;
+thGrid = linspace(0.5^(1/pow), nTh^(1/pow), 15).^pow;
+
+% divide trials for cross-validation
+if (cvFactor>nTrials)
+    cvFactor = nTrials;
+end
+
+groupings = nan(cvFactor, ceil(nTrials/cvFactor));
+groupings(1:nTrials) = randperm(nTrials);
+
+% extensive grid search for the optimal filter parameters
+for iGroup = 1:cvFactor
+    idxTest = groupings(iGroup, :);
+    idxTest = idxTest(~isnan(idxTest));
+    occTest = sum(occMap(:,:,idxTest), 3);
+    accumTest = sum(accumMap(:,:,idxTest), 3);
+    idxTrain = setdiff(1:nTrials, idxTest);
+    occTrain = sum(occMap(:,:,idxTrain), 3);
+    accumTrain = sum(accumMap(:,:,idxTrain), 3);
+    normMap = ones(size(accumTrain));
+    meanSignal = sum(accumTrain(:))/sum(occTrain(:));
+    for iZ = 1:length(zGrid)
+        hGauss1 = ndGaussian(zGrid(iZ));
+        occTrainF1 = conv2(hGauss1, 1, occTrain, 'same')';
+        accumTrainF1 = conv2(hGauss1, 1, accumTrain, 'same')';
+        normMapF1 = conv2(hGauss1, 1, normMap, 'same')';
+        occTrainF1 = occTrainF1';
+        accumTrainF1 = accumTrainF1';
+        normMapF1 = normMapF1';
+        occTest = occTest';
+        accumTest = accumTest';
+        for iTh = 1:length(thGrid)
+%             hGauss = ndGaussian([zGrid(iZ), thGrid(iTh)]);
+            hGauss2 = ndGaussian(thGrid(iTh));
+%             occTrainF = conv2(1, hGauss2, occTrainF1, 'same');
+%             accumTrainF = conv2(1, hGauss2, accumTrainF1, 'same');
+%             normMapF = conv2(1, hGauss2, normMapF1, 'same');
+            occTrainF = conv2(hGauss2, 1, occTrainF1, 'same');
+            accumTrainF = conv2(hGauss2, 1, accumTrainF1, 'same');
+            normMapF = conv2(hGauss2, 1, normMapF1, 'same');
+            
+            map = (accumTrainF./normMapF+epsilon*meanSignal)./...
+                (occTrainF./normMapF+epsilon);
+
+%             map = filterAndDivideMaps(occTrain, accumTrain, hGauss, 0.01);
+            err(iZ, iTh, iGroup) = mapError(map, occTest, accumTest);
+        end
+    end
+end
+
+overallErr = mean(err, 3);
+[cvErr, optIdx] = min(overallErr(:));
+[optZ, optTh] = ind2sub([length(zGrid), length(thGrid)], optIdx);
+filterStd = [zGrid(optZ), thGrid(optTh)];
+
+function err = mapError(trainedMap, occMap, accumMap)
+
+err = 0;
+idx = find(occMap);
+weights = occMap(idx);
+signal = accumMap(idx)./weights;
+model = trainedMap(idx);
+
+err = sum((signal-model).^2.*weights)/sum(weights);
 
