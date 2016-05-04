@@ -47,7 +47,7 @@ for iC = 1:nContrasts
 end
 reshape(res, size(map));
 
-%==================================================================================
+%==============================================================================
 function [z, th, d] = getTraces(obj, trIdx)
 
 if nargin<2 || isempty(trIdx)
@@ -83,7 +83,7 @@ end
 z = -z;
 th = th*180/pi;
 
-
+%=================================================
 function coordsOut = evenInterp(coordsIn, nPoints)
 
 if nargin<2 || isempty(nPoints)
@@ -95,13 +95,21 @@ travel = [0; cumsum(sqrt(sum(dCoords.^2, 2))+eps(1000))];
 travelOut = linspace(0, travel(end), nPoints);
 coordsOut = interp1(travel, coordsIn, travelOut);
 
+%==============================================================================
 function [filterStd, cvErr] = getOptStd(occMap, accumMap, cvFactor)
 
 [nZ, nTh, nTrials] = size(occMap);
 filterStd = [nan nan];
 cvErr = nan;
 epsilon = 0.01;
-doSpeedUp = false;
+doSpeedUp = true;
+
+dataClass = 'double';
+if doSpeedUp
+    occMap = single(occMap);
+    accumMap = single(accumMap);
+    dataClass = 'single';
+end
 
 % define the grid of z and th for the search
 pow = 3;
@@ -109,8 +117,8 @@ zGrid = linspace(0.5^(1/pow), nZ^(1/pow), 15).^pow;
 thGrid = linspace(0.5^(1/pow), nTh^(1/pow), 15).^pow;
 zGrid(end) = Inf;
 thGrid(end) = Inf;
-zGrid = linspace(2^(1/pow), (nZ/3)^(1/pow), 15).^pow;
-thGrid = linspace(2^(1/pow), (nTh/3)^(1/pow), 15).^pow;
+% zGrid = linspace(2^(1/pow), (nZ/3)^(1/pow), 15).^pow;
+% thGrid = linspace(2^(1/pow), (nTh/3)^(1/pow), 15).^pow;
 
 % divide trials for cross-validation
 if (cvFactor>nTrials)
@@ -130,7 +138,7 @@ for iGroup = 1:cvFactor
     idxTrain = setdiff(1:nTrials, idxTest);
     occTrain = sum(occMap(:,:,idxTrain), 3);
     accumTrain = sum(accumMap(:,:,idxTrain), 3);
-    normMap = ones(size(accumTrain));
+    normMap = ones(size(accumTrain), dataClass);
     %     meanSignal = sum(accumTrain(:))/sum(occTrain(:));
     meanSignal = 0.5;
     for iZ = 1:length(zGrid)
@@ -144,35 +152,16 @@ for iGroup = 1:cvFactor
             accumTrainF1 = conv2(hGauss1, 1, accumTrain, 'same');
             normMapF1 = conv2(hGauss1, 1, normMap, 'same');
         end
-        if doSpeedUp
-            occTrainF1 = occTrainF1';
-            accumTrainF1 = accumTrainF1';
-            normMapF1 = normMapF1';
-            occTest = occTest';
-            accumTest = accumTest';
-        end
         for iTh = 1:length(thGrid)
             if isinf(thGrid(iTh))
-                if doSpeedUp
-                    occTrainF1 = repmat(mean(occTrain, 1), nTh, 1);
-                    accumTrainF1 = repmat(mean(accumTrain, 1), nTh, 1);
-                    normMapF1 = repmat(mean(normMap, 1), nTh, 1);
-                else
-                    occTrainF1 = repmat(mean(occTrain, 2), 1, nTh);
-                    accumTrainF1 = repmat(mean(accumTrain, 2), 1, nTh);
-                    normMapF1 = repmat(mean(normMap, 2), 1, nTh);
-                end
+                occTrainF1 = repmat(mean(occTrain, 2), 1, nTh);
+                accumTrainF1 = repmat(mean(accumTrain, 2), 1, nTh);
+                normMapF1 = repmat(mean(normMap, 2), 1, nTh);
             else
                 hGauss2 = ndGaussian(thGrid(iTh));
-                if doSpeedUp
-                    occTrainF = conv2(hGauss2, 1, occTrainF1, 'same');
-                    accumTrainF = conv2(hGauss2, 1, accumTrainF1, 'same');
-                    normMapF = conv2(hGauss2, 1, normMapF1, 'same');
-                else
-                    occTrainF = conv2(1, hGauss2, occTrainF1, 'same');
-                    accumTrainF = conv2(1, hGauss2, accumTrainF1, 'same');
-                    normMapF = conv2(1, hGauss2, normMapF1, 'same');
-                end
+                occTrainF = conv2(1, hGauss2, occTrainF1, 'same');
+                accumTrainF = conv2(1, hGauss2, accumTrainF1, 'same');
+                normMapF = conv2(1, hGauss2, normMapF1, 'same');
             end
             
             map = (accumTrainF./normMapF+epsilon*meanSignal)./...
@@ -189,6 +178,7 @@ overallErr = mean(err, 3);
 [optZ, optTh] = ind2sub([length(zGrid), length(thGrid)], optIdx);
 filterStd = [zGrid(optZ), thGrid(optTh)];
 
+%==============================================================================
 function err = mapError(trainedMap, occMap, accumMap)
 
 err = 0;
