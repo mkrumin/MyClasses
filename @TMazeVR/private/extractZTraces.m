@@ -65,6 +65,9 @@ extras.zEdges = linspace(min(cell2mat(zVector)), max(cell2mat(zVector)), options
 dataTraces = binData(zVector, fVector, extras.zEdges);
 modelTraces = binData(zVector, fVectorModel, extras.zEdges);
 
+if options.scaleByContrast
+    modelTraces = scaleMaps(obj, dataTraces, modelTraces);
+end
 
 %%  smooth the data in z with the same filter as the model (the
 % cross-validated Gaussian filter)
@@ -88,13 +91,6 @@ for iCell = 1:nCells
 end
 dataTraces(nanPositions) = NaN;
 % toc
-%%
-% if scaleByContrast
-%     cSequence = obj.dataTMaze.contrastSequence(idxAll);
-%     cValues = unique(cSequence);
-%     [~, cIndices] = ismember(cSequence, cValues);
-%     fTracesModelScaled = scaleMaps(fTraces, fTracesModel, cIndices);
-% end
 
 % ===================================================
 function dataOut = binData(x, dataIn, binEdges)

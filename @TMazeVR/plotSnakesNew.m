@@ -1,11 +1,15 @@
 function plotSnakesNew(data, results)
 
 %% setting some parameters
-scaleByContrast = true;
 separateLRColormaps = false;
 climPrctiles = [50 99];
 margin = 0.1;
 correctOnly = true;
+
+options.nBins = 50;
+options.cellClasses2Use = 's'; % 'sad' for all ROIs, 'sa' to exclude dendrites
+options.scaleByContrast = false;
+
 
 %% extract and re-organize data
 nDatasets = length(data);
@@ -14,8 +18,6 @@ for iDataset = 1:nDatasets
     obj = data(iDataset);
     res = results(iDataset).res;
     
-    options.nBins = 50;
-    options.cellClasses2Use = 's'; % 'sad' for all ROIs, 'sa' to exclude dendrites
     [fTraces, fTracesModel, extras] = extractZTraces(obj, res, options);
     
     idxL = extras.report == 'L';
@@ -44,7 +46,7 @@ for iDataset = 1:nDatasets
     
     tmp = [extras.mapData.CoM];
     sfCenters{iDataset} = [tmp.center];
-
+    
 end % iDataset
 
 % average across trials to find mean response
@@ -306,7 +308,7 @@ for iContrast = 1:nContrasts
 %     red = respL./(respR+respL);
 %     blue = respR./(respR+respL);
     colorVector = [red(:), green(:), blue(:)];
-    scatter(sfCenters(2, idx), sfCenters(1, idx), 10*R(idx), colorVector(idx, :), 'filled', 'MarkerEdgeColor', 0.5*[1 1 1]);
+    scatter(sfCenters(2, idx), sfCenters(1, idx), max(10*R(idx), 1), colorVector(idx, :), 'filled', 'MarkerEdgeColor', 0.5*[1 1 1]);
 %     scatter(sfCenters(2, idx), sfCenters(1, idx), 10*R(idx), colorVector(idx, :), 'filled');
 %     scatter(sfCenters(2, idx), sfCenters(1, idx), 10*R(idx), colorVector(idx, :), 'filled');
     title(['\pm' sprintf('%d%%', cValues(iContrast))])
