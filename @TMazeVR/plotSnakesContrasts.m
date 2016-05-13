@@ -1,6 +1,5 @@
-function plotSnakes(data, results)
+function plotSnakesContrasts(data, results)
 
-scaleByContrast = true;
 separateLRColormaps = false;
 climPrctiles = [50 99];
 margin = 0.0;
@@ -93,9 +92,9 @@ for iDataset = 1:nDatasets
         end
         
  
-        % get the smoothing parameter used during training
+        % get the smoothing parameter used in training
         for iCell = 1:length(cellNumbers)
-            % the value in [pixels], translated into [cm]
+            % the value in pixels is calculated in [cm]
             zStd{iPlane}(1, iCell) = res{iPlane}(cellNumbers(iCell)).optStd(1)*...
                 res{iPlane}(cellNumbers(iCell)).options.dZ;
         end
@@ -108,7 +107,7 @@ for iDataset = 1:nDatasets
         fModel(:, iPlane) = mat2cell(fModelTmp{1, iPlane}, nSamples, size(fModelTmp{1, iPlane}, 2));
     end
     
-    for iTrial = 1:nTrials
+    for iTrial = 1:nTrials;
         fVector{iTrial} = cell2mat(fVector(iTrial, :));
         fModel{iTrial} = cell2mat(fModel(iTrial, :));
     end
@@ -141,13 +140,6 @@ for iDataset = 1:nDatasets
         fTraces(:,iCell, :) = imfilter(fTraces(:, iCell, :), hGauss(:), 'replicate', 'same');
     end
     
-    if scaleByContrast
-        cSequence = obj.dataTMaze.contrastSequence(idxAll);
-        cValues = unique(cSequence);
-        [~, cIndices] = ismember(cSequence, cValues);
-        fTracesModelScaled = scaleMaps(fTraces, fTracesModel, cIndices);        
-    end
-    
     meanAll{iDataset} = nanmean(fTraces, 3);
     meanL{iDataset} = nanmean(fTraces(:,:,idxL), 3);
     meanR{iDataset} = nanmean(fTraces(:,:,idxR), 3);
@@ -156,6 +148,21 @@ for iDataset = 1:nDatasets
     meanLModel{iDataset} = nanmean(fTracesModel(:,:,idxL), 3);
     meanRModel{iDataset} = nanmean(fTracesModel(:,:,idxR), 3);
     
+    cSequence = obj.dataTMaze.contrastSequence(idxAll);
+    cValues = unique(cSequence);
+    [~, cIndices] = ismember(cSequence, cValues);
+    nContrasts = length(cValues);
+    idxLC = cell(nContrasts, 1);
+    idxRC = cell(nContrasts, 1);
+    for iContrast = 1:nContrasts
+        idxLC{iContrast} = idxL' & (cIndices == iContrast);
+        idxRC{iContrast} = idxR' & (cIndices == iContrast);
+        meanLC{iContrast, iDataset} = nanmean(fTraces(:,:,idxLC{iContrast}), 3);
+        meanRC{iContrast, iDataset} = nanmean(fTraces(:,:,idxRC{iContrast}), 3);
+        meanLCModel{iContrast, iDataset} = nanmean(fTracesModel(:,:,idxLC{iContrast}), 3);
+        meanRCModel{iContrast, iDataset} = nanmean(fTracesModel(:,:,idxRC{iContrast}), 3);
+    end
+
 end % iDataset
 
 % average across trials to find mean response
@@ -169,6 +176,15 @@ nCells = size(fTracesMean, 2);
 fTracesMeanModel = cell2mat(meanAllModel);
 meanLModel = cell2mat(meanLModel);
 meanRModel = cell2mat(meanRModel);
+tmpBinning = nBins*ones(nContrasts, 1);
+meanLC = cell2mat(meanLC);
+meanRC = cell2mat(meanRC);
+meanLCModel = cell2mat(meanLCModel);
+meanRCModel = cell2mat(meanRCModel);
+meanLC = mat2cell(meanLC, tmpBinning, nCells);
+meanRC = mat2cell(meanRC, tmpBinning, nCells);
+meanLCModel = mat2cell(meanLCModel, tmpBinning, nCells);
+meanRCModel = mat2cell(meanRCModel, tmpBinning, nCells);
 
 % h = mean(diff(zAxis));
 % p = 1/(1+h^3/0.6);
@@ -190,7 +206,6 @@ fTracesMeanModel = bsxfun(@rdivide, fTracesMeanModel, maxValues);
 
 [~, latency] = max(fTracesMean);
 [~, order] = sort(latency);
-[~, orderInv] = sort(order);
 
 figure
 subplot(4, 4, [1 2 5 6])
@@ -372,5 +387,98 @@ xlabel('z [cm]');
 axis xy
 colorbar
 
+%%
+for iContrast = 1:nContrasts
+    meanLC{iContrast} = bsxfun(@minus, meanLC{iContrast}, minValues);
+    meanLC{iContrast} = bsxfun(@rdivide, meanLC{iContrast}, maxValues);
+    meanRC{iContrast} = bsxfun(@minus, meanRC{iContrast}, minValues);
+    meanRC{iContrast} = bsxfun(@rdivide, meanRC{iContrast}, maxValues);
+    meanLCModel{iContrast} = bsxfun(@minus, meanLCModel{iContrast}, minValues);
+    meanLCModel{iContrast} = bsxfun(@rdivide, meanLCModel{iContrast}, maxValues);
+    meanRCModel{iContrast} = bsxfun(@minus, meanRCModel{iContrast}, minValues);
+    meanRCModel{iContrast} = bsxfun(@rdivide, meanRCModel{iContrast}, maxValues);
+end
+
+%%
+doColorbar = false;
+for iContrast = 1:nContrasts
+    figure('Name', sprintf('%d %% Contrast', cValues(iContrast)));
+    
+    subplot(2, 4, 1)
+    imagesc(zAxis, 1:nCellsL, meanLC{iContrast}(:, prefL(orderPrefL))');
+    caxis(climsL);
+    title('Left trials');
+    ylabel('Cells Prefer Left');
+    axis xy
+    if doColorbar
+    colorbar;
+    end
+    
+    subplot(2, 4, 2)
+    imagesc(zAxis, 1:nCellsL, meanRC{iContrast}(:, prefL(orderPrefL))');
+    caxis(climsL);
+    title('Right trials');
+    axis xy
+    if doColorbar
+    colorbar;
+    end
+    
+    subplot(2, 4, 5)
+    imagesc(zAxis, 1:nCellsR, meanLC{iContrast}(:, prefR(orderPrefR))');
+    caxis(climsR);
+    ylabel('Cells prefer Right')
+    xlabel('z [cm]');
+    axis xy
+    if doColorbar
+    colorbar;
+    end
+    
+    subplot(2, 4, 6)
+    imagesc(zAxis, 1:nCellsR, meanRC{iContrast}(:, prefR(orderPrefR))');
+    caxis(climsR);
+    xlabel('z [cm]');
+    axis xy
+    if doColorbar
+    colorbar;
+    end
+
+    subplot(2, 4, 3)
+    imagesc(zAxis, 1:nCellsL, meanLCModel{iContrast}(:, prefL(orderPrefL))');
+    caxis(climsL);
+    title('Left trials');
+    ylabel('Cells Prefer Left');
+    axis xy
+    if doColorbar
+    colorbar;
+    end
+    
+    subplot(2, 4, 4)
+    imagesc(zAxis, 1:nCellsL, meanRCModel{iContrast}(:, prefL(orderPrefL))');
+    caxis(climsL);
+    title('Right trials');
+    axis xy
+    if doColorbar
+    colorbar;
+    end
+    
+    subplot(2, 4, 7)
+    imagesc(zAxis, 1:nCellsR, meanLCModel{iContrast}(:, prefR(orderPrefR))');
+    caxis(climsR);
+    ylabel('Cells prefer Right')
+    xlabel('z [cm]');
+    axis xy
+    if doColorbar
+    colorbar;
+    end
+    
+    subplot(2, 4, 8)
+    imagesc(zAxis, 1:nCellsR, meanRCModel{iContrast}(:, prefR(orderPrefR))');
+    caxis(climsR);
+    xlabel('z [cm]');
+    axis xy
+    if doColorbar
+    colorbar;
+    end
+end
 %%
 % keyboard;

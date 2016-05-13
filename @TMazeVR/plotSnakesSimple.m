@@ -1,9 +1,8 @@
-function plotSnakes(data, results)
+function plotSnakesSimple(data, results)
 
-scaleByContrast = true;
-separateLRColormaps = false;
+separateLRColormaps = true;
 climPrctiles = [50 99];
-margin = 0.0;
+margin = 0.1;
 
 nDatasets = length(data);
 for iDataset = 1:nDatasets
@@ -87,15 +86,13 @@ for iDataset = 1:nDatasets
             map = res{iPlane}(cellNumbers(iCell)).zThetaMap;
             zCoords = res{iPlane}(cellNumbers(iCell)).zThetaBinCentres{1};
             thCoords = res{iPlane}(cellNumbers(iCell)).zThetaBinCentres{2};
-            allTh(allTh>max(thCoords)) = max(thCoords);
-            allTh(allTh<min(thCoords)) = min(thCoords);
-            fModelTmp{iPlane}(:, iCell) = interp2(thCoords, zCoords, map, allTh, allZ, 'linear');
+            fModelTmp{iPlane}(:, iCell) = interp2(thCoords, zCoords, map, allTh, allZ);
         end
         
  
-        % get the smoothing parameter used during training
+        % get the smoothing parameter used in trining
         for iCell = 1:length(cellNumbers)
-            % the value in [pixels], translated into [cm]
+            % the value in pixels is calculated in [cm]
             zStd{iPlane}(1, iCell) = res{iPlane}(cellNumbers(iCell)).optStd(1)*...
                 res{iPlane}(cellNumbers(iCell)).options.dZ;
         end
@@ -139,13 +136,6 @@ for iDataset = 1:nDatasets
     for iCell = 1:nCells
         hGauss = ndGaussian(zStd(iCell));
         fTraces(:,iCell, :) = imfilter(fTraces(:, iCell, :), hGauss(:), 'replicate', 'same');
-    end
-    
-    if scaleByContrast
-        cSequence = obj.dataTMaze.contrastSequence(idxAll);
-        cValues = unique(cSequence);
-        [~, cIndices] = ismember(cSequence, cValues);
-        fTracesModelScaled = scaleMaps(fTraces, fTracesModel, cIndices);        
     end
     
     meanAll{iDataset} = nanmean(fTraces, 3);
@@ -263,6 +253,8 @@ else
     climsR = clims;
     climsL = clims;
 end
+climsR = [0 1];
+climsL = [0 1];
 
 % subplot(4, 4, 9)
 % imagesc(zAxis, 1:nCellsL, meanL(:, order(ismember(order, prefL)))');
