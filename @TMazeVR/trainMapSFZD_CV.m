@@ -1,4 +1,4 @@
-function [zthErr, zthdErr, zdErr] = trainMapSFZD_CV(obj, iPlane, iROI, options)
+function [zthErr, zthdErr, zdErr, zth_d_Err] = trainMapSFZD_CV(obj, iPlane, iROI, options)
 
 if nargin<4
     options = struct;
@@ -90,6 +90,8 @@ end
 
 [optStd25D, errVals25D, ~, ~] = ...
     estOptimalStd25D([coordsL, coordsR], [fL, fR], {zEdges, thEdges}, options.errPower);
+% [optStd15D, errVals15D, ~, ~] = ...
+%     estOptimalStd15D([zL, zR], [fL, fR], {zEdges}, options.errPower);
 
 % hFilter = ndGaussian(optStd);
 % [zthMap, binCntrs] = estMap(cell2mat(coords), cell2mat(fVector), {zEdges, thEdges}, hFilter);
@@ -98,7 +100,8 @@ nL = length(validLTrials);
 zthErr = errVals;
 zthdErr = (errValL3D*nL + errValR3D*nR)/(nL + nR);
 zdErr = (errValL*nL + errValR*nR)/(nL+nR);
-
+zth_d_Err = errVals25D;
+% z_d_Err = errVals15D;
 
 end % TrainMaps()
 
@@ -393,9 +396,16 @@ function [stdOut, errVal, errValMatrix, gridValues] = estOptimalStd25D(coords2D,
 [nTrials, nSubsets] = size(coords2D);
 coords = cell(nTrials, 1);
 signal = cell(nTrials, 1);
+coordsXOR2D = cell(nTrials, nSubsets);
+signalXOR2D = cell(nTrials, nSubsets);
 for iTrial = 1:nTrials
     coords{iTrial, 1} = cat(1, coords2D{iTrial, 1}, coords2D{iTrial, 2});
     signal{iTrial, 1} = cat(1, signal2D{iTrial, 1}, signal2D{iTrial, 2});
+    idx = setdiff(1:nTrials, iTrial);
+    for iSubset = 1:nSubsets
+        coordsXOR2D{iTrial, iSubset} = cell2mat(coords2D(idx, iSubset));
+        signalXOR2D{iTrial, iSubset} = cell2mat(signal2D(idx, iSubset));
+    end
 end
 nDims = size(coords{1}, 2);
 
@@ -419,6 +429,10 @@ for iTrial = 1:nTrials
         [~, ind(:, 1)] = histc(coords2D{iTrial, iSubset}(:,1), binEdges{1});
         [~, ind(:, 2)] = histc(coords2D{iTrial, iSubset}(:,2), binEdges{2});
         testXYLinearIdx{iTrial, iSubset} = sub2ind([nRows, nColumns], ind(:,1), ind(:,2));
+        indTrain = nan(size(coordsXOR2D{iTrial, iSubset}));
+        [~, indTrain(:, 1)] = histc(coordsXOR2D{iTrial, iSubset}(:,1), binEdges{1});
+        [~, indTrain(:, 2)] = histc(coordsXOR2D{iTrial, iSubset}(:,2), binEdges{2});
+        trainXYLinearIdx{iTrial, iSubset} = sub2ind([nRows, nColumns], indTrain(:,1), indTrain(:,2));
     end
 end
 % these are training sets (XOR because they exclude trial #1 data)
@@ -428,6 +442,9 @@ for iTrial = 1:nTrials
     idx = setdiff(1:nTrials, iTrial);
     occMapsXOR(:,:,iTrial) = sum(occMaps(:,:,idx), 3);
     fMapsXOR(:,:,iTrial) = sum(fMaps(:,:,idx), 3);
+    meanVal(iTrial, 1) = mean(cell2mat(signal2D(idx, 1)));
+    meanVal(iTrial, 2) = mean(cell2mat(signal2D(idx, 2)));
+    meanVal(iTrial, 3) = mean(cell2mat(signal(idx)));
 end
 
 % let's run a grid search for the optimal parameters
@@ -448,8 +465,6 @@ if nDims == 2
         x2 = gridValues{2}(nInd);
         hGauss2 = ndGaussian(x2);
         
-        meanVal = squeeze(sum(sum(fMapsXOR), 2)./sum(sum(occMapsXOR), 2));
-        
         occMapsXORSpecial = permute(occMapsXOR, [2, 1, 3]);
         occMapsXORSpecial = reshape(occMapsXORSpecial, nColumns, nRows*nTrials);
         occMapsXORFilt = conv2(hGauss2, 1, occMapsXORSpecial, 'same');
@@ -465,7 +480,7 @@ if nDims == 2
         for mInd = 1:length(gridValues{1})
             x1 = gridValues{1}(mInd);
             errValMatrix(mInd, nInd) = ...
-                mapError25D(x1, occMapsXORFilt, fMapsXORFilt, meanVal, testXYLinearIdx, signal2D, errPow);
+                mapError25D(x1, occMapsXORFilt, fMapsXORFilt, meanVal, trainXYLinearIdx, signalXOR2D, testXYLinearIdx, signal2D, errPow);
         end
     end
 else
@@ -484,7 +499,7 @@ errVal = errValMatrix(ind);
 end % estOptimalStd()
 
 %==========================================================================
-function errValue = mapError25D(x1, occMaps, fMaps, meanF, testXYIdx, testF, errPow)
+function errValue = mapError25D(x1, occMaps, fMaps, meanF, trainXYIdx, trainF, testXYIdx, testF, errPow)
 
 x1(x1<0.2) = 0.2; % HACK! This value is in pixels, not real units
 
@@ -494,7 +509,7 @@ hGauss = ndGaussian(x1);
 chunkErrors = nan(nTrials, 1);
 
 epsilon = 0.01;
-meanFMatrix = repmat(permute(meanF, [2, 3, 1]), nRows, nColumns, 1);
+meanFMatrix = repmat(permute(meanF(:,3), [2, 3, 1]), nRows, nColumns, 1);
 % allPredictionMaps = (imfilter(fMaps, hGauss)+epsilon*meanFMatrix)./(imfilter(occMaps, hGauss)+epsilon);
 fMapsSpecial = reshape(fMaps, nRows, []);
 occMapsSpecial = reshape(occMaps, nRows, []);
@@ -514,8 +529,12 @@ for iTrial = 1:nTrials
     
     predictedF{1} = predictionMap(testXYIdx{iTrial, 1});
     predictedF{2} = predictionMap(testXYIdx{iTrial, 2});
-    
-    
+    trainPredictedF{1} = predictionMap(trainXYIdx{iTrial, 1});
+    trainPredictedF{2} = predictionMap(trainXYIdx{iTrial, 2});
+    pp = polyfit(trainPredictedF{1}, trainF{iTrial, 1}, 1);
+    predictedF{1} = predictedF{1}*pp(1) + pp(2);
+    pp = polyfit(trainPredictedF{2}, trainF{iTrial, 2}, 1);
+    predictedF{2} = predictedF{2}*pp(1) + pp(2);
     
     %     chunkErrors(iChunk) = var(predictedF - testF{iChunk})/var(testF{iChunk});
     meanFTraining = meanF(iTrial);
@@ -525,7 +544,15 @@ for iTrial = 1:nTrials
         case 1
             chunkErrors(iTrial) = sum(abs(predictedF - testF{iTrial}))/sum(abs(meanFTraining - testF{iTrial}));
         case 2
-            chunkErrors(iTrial) = sum((predictedF - testF{iTrial}).^2)/sum((meanFTraining - testF{iTrial}).^2);
+            err1 = sum((predictedF{1}-testF{iTrial, 1}).^2);
+            base1 = sum((testF{iTrial, 1}-meanF(iTrial, 1)).^2);
+            err2 = sum((predictedF{2}-testF{iTrial, 2}).^2);
+            base2 = sum((testF{iTrial, 2}-meanF(iTrial, 2)).^2);
+            len1 = length(predictedF{1});
+            len2 = length(predictedF{2});
+            
+            chunkErrors(iTrial) = (err1/base1*len1+err2/base2*len2)/(len1+len2);
+            %             sum((predictedF - testF{iTrial}).^2)/sum((meanFTraining - testF{iTrial}).^2);
         otherwise
             chunkErrors(iTrial) = sum(abs(predictedF - testF{iTrial}).^errPow)/sum(abs(meanFTraining - testF{iTrial}).^errPow);
     end
