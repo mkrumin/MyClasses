@@ -522,21 +522,18 @@ for iTrial = 1:nTrials
         % there is no data for this trial
         continue;
     end
-    %     occM = occMaps(:,:,iTrial);
-    %     fM = fMaps(:,:,iTrial);
-    %     predictionMap = filterAndDivideMaps1D(occM, fM, meanF(iTrial), hGauss);
+    
     predictionMap = allPredictionMaps(:,:,iTrial);
     
     predictedF{1} = predictionMap(testXYIdx{iTrial, 1});
     predictedF{2} = predictionMap(testXYIdx{iTrial, 2});
     trainPredictedF{1} = predictionMap(trainXYIdx{iTrial, 1});
     trainPredictedF{2} = predictionMap(trainXYIdx{iTrial, 2});
-    pp = polyfit(trainPredictedF{1}, trainF{iTrial, 1}, 1);
+    pp = getLinearScaling(trainPredictedF{1}, trainF{iTrial, 1});
     predictedF{1} = predictedF{1}*pp(1) + pp(2);
-    pp = polyfit(trainPredictedF{2}, trainF{iTrial, 2}, 1);
+    pp = getLinearScaling(trainPredictedF{2}, trainF{iTrial, 2});
     predictedF{2} = predictedF{2}*pp(1) + pp(2);
     
-    %     chunkErrors(iChunk) = var(predictedF - testF{iChunk})/var(testF{iChunk});
     meanFTraining = meanF(iTrial);
     % the idea here is to check how much better the map is relative to just
     % using mean F map.
@@ -562,3 +559,15 @@ errValue = nanmean(chunkErrors); % mean() works better, maps are smoother and ni
 
 end % mapErrorFaster()
 
+%============================================================================
+function  out = getLinearScaling(xx, yy)
+
+mY = mean(yy);
+mX = mean(xx);
+% sc = pinv(xx-mX)*(yy-mY);
+sc = ((xx-mX)'*(yy-mY))/((xx-mX)'*(xx-mX));
+out(1) = sc;
+out(2) =  mY-sc*mX;
+out = out(:);
+
+end
