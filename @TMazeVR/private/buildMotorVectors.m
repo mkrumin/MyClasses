@@ -18,6 +18,7 @@ r = r*dtBall; % weird hack to scale properly, for some reason is only needed for
 v = filtfilt(b, a, velGain/dtBall*obj.dataBall.forward); % [cm/sec]
 v = interp1(obj.dataBall.t, v, tData);
 
+
 nTrials = length(trialIdx);
 rCell = cell(nTrials, 1);
 vCell = cell(nTrials, 1);
