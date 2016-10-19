@@ -4,26 +4,30 @@ scaleByContrast = true;
 separateLRColormaps = false;
 climPrctiles = [50 99];
 margin = 0.0;
+cellClasses2Use = 's';
+nBins = 50;
 
 nDatasets = length(data);
 for iDataset = 1:nDatasets
     fprintf('iDataset %d/%d\n', iDataset, nDatasets);
     obj = data(iDataset);
     res = results(iDataset).res;
-    % take only legal trials
     
+    % take only finished trials
     idxAll = find(ismember(obj.dataTMaze.report, 'LR'));
     nTrials = length(idxAll);
-    % divide trials into groups (e.g. going L/R)
     
+    
+    % divide trials into groups (e.g. going L/R)
+    % be careful - these are indices within idxAll, already excluding the unfinished
+    % trials
     idxL = obj.dataTMaze.report(idxAll) == 'L';
     idxR = obj.dataTMaze.report(idxAll) == 'R';
     idxC = obj.dataTMaze.outcome(idxAll) == 'C';
     idxW = obj.dataTMaze.outcome(idxAll) == 'W';
-
-% taking only correct trials    
-%     idxL = idxL & idxC;
-%     idxR = idxR & idxC;
+    % only correct trials
+    idxCL = idxL & idxC;
+    idxCR = idxR & idxC;
     
     % get traces with uniform z
     
@@ -32,51 +36,50 @@ for iDataset = 1:nDatasets
     thVector = cell(nTrials, 1);
     zVector = cell(nTrials, 1);
     fVector = cell(nTrials, max(obj.Planes));
+    tVector = cell(nTrials, max(obj.Planes));
     zStd = cell(1, max(obj.Planes));
     nSamples = zeros(nTrials, 1);
     % tVector = cell(0);
-    zMin = [];
-    zMax = [];
+    zMin = nan(nTrials, 1);
+    zMax = nan(nTrials, 1);
     
-    getCoords = true; % this is a flag of the first pass (the first plane is analyzed)
+    
+    % get the trajectories information
+    
+    for iTrial = 1:nTrials
+        [thVector{iTrial}, zVector{iTrial}, ~, ~] =...
+            buildVectors(obj, idxAll(iTrial));%, tData, fData);
+        if ~isempty(zVector{iTrial})
+            zMin(iTrial) = min(zVector{iTrial});
+            zMax(iTrial) = max(zVector{iTrial});
+        end
+        nSamples(iTrial) = length(zVector{iTrial});
+    end
+    
+    zMinLimit = max(zMin);
+    zMaxLimit = min(zMax);
+    
+    dZ = (zMaxLimit-zMinLimit)/(nBins+1);
+    zEdges = buildEdges([zMinLimit, zMaxLimit], dZ);
+    zAxis = (zEdges(1:end-1)+zEdges(2:end))/2;
+    % the next line will collapse all the data from the final part of the
+    % corridor (where the 'junction' is) into a single bin
+    zEdges(end) = Inf;
+    
     for iPlane = obj.Planes
         fprintf('iPlane %d\n', iPlane);
-        cellIdx = cell2mat(obj.data2p{iPlane}.ROI.CellClasses) == 's';
-        %     cellIdx = ismember(cell2mat(obj.data2p{iPlane}.ROI.CellClasses), 'sa');
+        cellIdx = ismember(cell2mat(obj.data2p{iPlane}.ROI.CellClasses), cellClasses2Use);
         fData = obj.data2p{iPlane}.F(:, cellIdx);
         F0 = prctile(fData, 20);
         fData = bsxfun(@minus, fData, F0);
         fData = bsxfun(@rdivide, fData, F0);
         
         tData = obj.times2p{iPlane}';
-        if getCoords
-            for iTrial = 1:nTrials
-                [thVector{iTrial}, zVector{iTrial}, fVector{iTrial, iPlane}, ~] =...
-                    buildVectors(obj, idxAll(iTrial), tData, fData);
-                if ~isempty(zVector{iTrial})
-                    zMin(iTrial) = min(zVector{iTrial});
-                    zMax(iTrial) = max(zVector{iTrial});
-                else
-                    zMin(iTrial) = NaN;
-                    zMax(iTrial) = NaN;
-                end
-                nSamples(iTrial) = length(zVector{iTrial});
-            end
-            getCoords = false;
-            
-            zMinLimit = max(zMin);
-            zMaxLimit = min(zMax);
-            
-            nBins = 50;
-            zEdges = linspace(zMinLimit, zMaxLimit, nBins+1);
-            zAxis = (zEdges(1:end-1)+zEdges(2:end))/2;
-            dZ = diff(zAxis(1:2));
-            zEdges(end) = Inf;
-        else
-            [~, ~, fVectorTmp, ~] =...
-                buildVectors(obj, idxAll, tData, fData);
-            fVector(:, iPlane) = mat2cell(fVectorTmp, nSamples, size(fVectorTmp, 2));
-        end
+        
+        [~, ~, fVectorTmp, tVectorTmp] =...
+            buildVectors(obj, idxAll, tData, fData);
+        fVector(:, iPlane) = mat2cell(fVectorTmp, nSamples, size(fVectorTmp, 2));
+        tVector(:, iPlane) = mat2cell(tVectorTmp, nSamples, 1);
         %             res{iPlane}
         
         fModelTmp{iPlane} = nan(sum(nSamples), sum(cellIdx));
@@ -92,12 +95,14 @@ for iDataset = 1:nDatasets
             fModelTmp{iPlane}(:, iCell) = interp2(thCoords, zCoords, map, allTh, allZ, 'linear');
         end
         
- 
-        % get the smoothing parameter used during training
+        
+        % get the smoothing parameter used during model cross-validation
         for iCell = 1:length(cellNumbers)
             % the value in [pixels], translated into [cm]
             zStd{iPlane}(1, iCell) = res{iPlane}(cellNumbers(iCell)).optStd(1)*...
                 res{iPlane}(cellNumbers(iCell)).options.dZ;
+            % and then translated into bins (current resolution);
+            zStd{iPlane}(1, iCell) = zStd{iPlane}(1, iCell)/dZ;
         end
         
     end
@@ -113,13 +118,16 @@ for iDataset = 1:nDatasets
         fModel{iTrial} = cell2mat(fModel(iTrial, :));
     end
     fVector = fVector(:,1);
+    tVector = tVector(:,1);
     fModel = fModel(:,1);
     zStd = cell2mat(zStd);
     
     nCells = size(fVector{1}, 2);
     
     fTraces = nan(nBins, nCells, nTrials);
+    fTracesT = nan(nBins, nCells, nTrials);
     fTracesModel = nan(nBins, nCells, nTrials);
+    fTracesModelT = nan(nBins, nCells, nTrials);
     for iTrial = 1:nTrials
         [~, ~, idx] = histcounts(zVector{iTrial}, zEdges);
         for iBin = 1:nBins
@@ -132,6 +140,10 @@ for iDataset = 1:nDatasets
                 fTracesModel(iBin, :, iTrial) = tmp;
             end
         end
+        if nSamples(iTrial)>0
+            fTracesT(:, :, iTrial) = resample(fVector{iTrial}, nBins, nSamples(iTrial));
+            fTracesModelT(:, :, iTrial) = resample(fModel{iTrial}, nBins, nSamples(iTrial));
+        end
     end
     
     % smooth the data in z with the same filter as the model (the
@@ -141,12 +153,12 @@ for iDataset = 1:nDatasets
         fTraces(:,iCell, :) = imfilter(fTraces(:, iCell, :), hGauss(:), 'replicate', 'same');
     end
     
-    if scaleByContrast
-        cSequence = obj.dataTMaze.contrastSequence(idxAll);
-        cValues = unique(cSequence);
-        [~, cIndices] = ismember(cSequence, cValues);
-        fTracesModelScaled = scaleMaps(fTraces, fTracesModel, cIndices);        
-    end
+%     if scaleByContrast
+%         cSequence = obj.dataTMaze.contrastSequence(idxAll);
+%         cValues = unique(cSequence);
+%         [~, cIndices] = ismember(cSequence, cValues);
+%         fTracesModelScaled = scaleMaps(fTraces, fTracesModel, cIndices);
+%     end
     
     meanAll{iDataset} = nanmean(fTraces, 3);
     meanL{iDataset} = nanmean(fTraces(:,:,idxL), 3);
@@ -271,21 +283,21 @@ end
 % ylabel('Cells Prefer Left');
 % axis xy
 % colorbar;
-% 
+%
 % subplot(4, 4, 10)
 % imagesc(zAxis, 1:nCellsL, meanR(:, order(ismember(order, prefL)))');
 % caxis(climsL);
 % title('Right trials');
 % axis xy
 % colorbar
-% 
+%
 % subplot(4, 4, 13)
 % imagesc(zAxis, 1:nCellsR, meanL(:, order(ismember(order, prefR)))');
 % caxis(climsR);
 % ylabel('Cells prefer Right')
 % axis xy
 % colorbar;
-% 
+%
 % subplot(4, 4, 14)
 % imagesc(zAxis, 1:nCellsR, meanR(:, order(ismember(order, prefR)))');
 % caxis(climsR);
