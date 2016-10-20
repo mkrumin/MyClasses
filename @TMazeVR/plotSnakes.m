@@ -2,7 +2,7 @@ function plotSnakes(data, results)
 
 scaleByContrast = true;
 separateLRColormaps = false;
-climPrctiles = [50 99];
+climPrctiles = [10 99];
 margin = 0.0;
 cellClasses2Use = 's';
 nBins = 50;
@@ -18,25 +18,10 @@ for iDataset = 1:nDatasets
     nTrials = length(idxAll);
     
     
-    % divide trials into groups (e.g. going L/R)
-    % be careful - these are indices within idxAll, already excluding the unfinished
-    % trials
-    idxL = obj.dataTMaze.report(idxAll) == 'L';
-    idxR = obj.dataTMaze.report(idxAll) == 'R';
-    idxC = obj.dataTMaze.outcome(idxAll) == 'C';
-    idxW = obj.dataTMaze.outcome(idxAll) == 'W';
-    % only correct trials
-    idxCL = idxL & idxC;
-    idxCR = idxR & idxC;
-    
     % get traces with uniform z
-    
-    % [thVector, zVector, fVector, tVector] = buildVectors(obj, trialIdx, tData, fData)
     
     thVector = cell(nTrials, 1);
     zVector = cell(nTrials, 1);
-    fVector = cell(nTrials, max(obj.Planes));
-    tVector = cell(nTrials, max(obj.Planes));
     zStd = cell(1, max(obj.Planes));
     nSamples = zeros(nTrials, 1);
     % tVector = cell(0);
@@ -55,6 +40,16 @@ for iDataset = 1:nDatasets
         end
         nSamples(iTrial) = length(zVector{iTrial});
     end
+
+    % exclude empty trials
+    validTrials = find(nSamples>0);
+    nTrials = length(validTrials);
+    nSamples = nSamples(validTrials);
+    idxAll = idxAll(validTrials);
+    zMin = zMin(validTrials);
+    zMax = zMax(validTrials);
+    thVector = thVector(validTrials);
+    zVector = zVector(validTrials);
     
     zMinLimit = max(zMin);
     zMaxLimit = min(zMax);
@@ -65,7 +60,10 @@ for iDataset = 1:nDatasets
     % the next line will collapse all the data from the final part of the
     % corridor (where the 'junction' is) into a single bin
     zEdges(end) = Inf;
-    
+
+    fVector = cell(nTrials, max(obj.Planes));
+    tVector = cell(nTrials, max(obj.Planes));
+
     for iPlane = obj.Planes
         fprintf('iPlane %d\n', iPlane);
         cellIdx = ismember(cell2mat(obj.data2p{iPlane}.ROI.CellClasses), cellClasses2Use);
@@ -146,6 +144,20 @@ for iDataset = 1:nDatasets
         end
     end
     
+    % remove NaNs from fTraces and fTracesModel
+    for iTrial = 1:nTrials
+        nanIdx = find(isnan(fTraces(:, 1, iTrial)));
+        if isempty(nanIdx)
+            continue;
+        end
+        notNanIdx = find(~isnan(fTraces(:, 1, iTrial)));
+        % use 'pchip' method to allow extrapolation
+        fTraces(nanIdx, :, iTrial) = interp1(notNanIdx, ...
+            fTraces(notNanIdx, :, iTrial), nanIdx, 'pchip', 'extrap');
+        fTracesModel(nanIdx, :, iTrial) = interp1(notNanIdx, ...
+            fTracesModel(notNanIdx, :, iTrial), nanIdx, 'pchip', 'extrap');
+    end
+    
     % smooth the data in z with the same filter as the model (the
     % cross-validated Gaussian filter)
     for iCell = 1:nCells
@@ -159,7 +171,18 @@ for iDataset = 1:nDatasets
 %         [~, cIndices] = ismember(cSequence, cValues);
 %         fTracesModelScaled = scaleMaps(fTraces, fTracesModel, cIndices);
 %     end
-    
+
+    % divide trials into groups (e.g. going L/R)
+    % be careful - these are indices within idxAll, already excluding the unfinished
+    % trials
+    idxL = obj.dataTMaze.report(idxAll) == 'L';
+    idxR = obj.dataTMaze.report(idxAll) == 'R';
+    idxC = obj.dataTMaze.outcome(idxAll) == 'C';
+    idxW = obj.dataTMaze.outcome(idxAll) == 'W';
+    % only correct trials
+    idxCL = idxL & idxC;
+    idxCR = idxR & idxC;
+
     meanAll{iDataset} = nanmean(fTraces, 3);
     meanL{iDataset} = nanmean(fTraces(:,:,idxL), 3);
     meanR{iDataset} = nanmean(fTraces(:,:,idxR), 3);
@@ -167,20 +190,35 @@ for iDataset = 1:nDatasets
     meanAllModel{iDataset} = nanmean(fTracesModel, 3);
     meanLModel{iDataset} = nanmean(fTracesModel(:,:,idxL), 3);
     meanRModel{iDataset} = nanmean(fTracesModel(:,:,idxR), 3);
+
+    meanAllT{iDataset} = nanmean(fTracesT, 3);
+    meanLT{iDataset} = nanmean(fTracesT(:,:,idxL), 3);
+    meanRT{iDataset} = nanmean(fTracesT(:,:,idxR), 3);
     
+    meanAllModelT{iDataset} = nanmean(fTracesModelT, 3);
+    meanLModelT{iDataset} = nanmean(fTracesModelT(:,:,idxL), 3);
+    meanRModelT{iDataset} = nanmean(fTracesModelT(:,:,idxR), 3);
+
 end % iDataset
 
 % average across trials to find mean response
 % use this to normalize the traces and to get latency;
 
-%% plotting
-fTracesMean = cell2mat(meanAll);
+%% preparing for plotting
+meanAll = cell2mat(meanAll);
 meanL = cell2mat(meanL);
 meanR = cell2mat(meanR);
-nCells = size(fTracesMean, 2);
-fTracesMeanModel = cell2mat(meanAllModel);
+nCells = size(meanAll, 2);
+meanAllT = cell2mat(meanAllT);
+meanLT = cell2mat(meanLT);
+meanRT = cell2mat(meanRT);
+meanAllModel = cell2mat(meanAllModel);
 meanLModel = cell2mat(meanLModel);
 meanRModel = cell2mat(meanRModel);
+meanAllModelT = cell2mat(meanAllModelT);
+meanLModelT = cell2mat(meanLModelT);
+meanRModelT = cell2mat(meanRModelT);
+
 
 % h = mean(diff(zAxis));
 % p = 1/(1+h^3/0.6);
@@ -190,44 +228,68 @@ meanRModel = cell2mat(meanRModel);
 % [fTracesMeanModel, p] = csaps(zAxis, fTracesMeanModel', p, zAxis);
 % fTracesMeanModel = fTracesMeanModel';
 
-minValues = nanmin(fTracesMean);
-fTracesMean = bsxfun(@minus, fTracesMean, minValues);
-maxValues = nanmax(fTracesMean);
-fTracesMean = bsxfun(@rdivide, fTracesMean, maxValues);
+% minValues = min(meanAll);
+% meanAll = bsxfun(@minus, meanAll, minValues);
+% maxValues = max(meanAll);
+% meanAll = bsxfun(@rdivide, meanAll, maxValues);
+% 
+% meanAllModel = bsxfun(@minus, meanAllModel, minValues);
+% meanAllModel = bsxfun(@rdivide, meanAllModel, maxValues);
 
-% minValues = nanmin(fTracesMeanModel);
-fTracesMeanModel = bsxfun(@minus, fTracesMeanModel, minValues);
-% maxValues = nanmax(fTracesMeanModel);
-fTracesMeanModel = bsxfun(@rdivide, fTracesMeanModel, maxValues);
 
-[~, latency] = max(fTracesMean);
-[~, order] = sort(latency);
+[~, latency] = max(meanAll);
+[orderedLatency, order] = sort(latency);
+orderProper = order(orderedLatency>1);
 [~, orderInv] = sort(order);
 
-figure
-subplot(4, 4, [1 2 5 6])
-% imagesc(zAxis, 1:nCells, fTracesMean(:, order)');
-imagesc(zAxis, 1:nCells, fTracesMean(:, order)');
-caxis(prctile(fTracesMean(:), climPrctiles))
+[~, latencyT] = max(meanAllT);
+[orderedLatencyT, orderT] = sort(latencyT);
+orderProperT = orderT(orderedLatencyT>1);
+[~, orderInvT] = sort(orderT);
 
+
+%% plotting
+
+figure
+subplot(2, 2, 1)
+imagesc(zAxis, 1:nCells, meanAll(:, order)');
+% imagesc(zAxis, 1:nCells, meanAll(:, orderProper)');
+caxis(prctile(meanAll(:), climPrctiles))
 axis xy
-% xlabel('z [cm]')
+xlabel('z [cm]')
 ylabel('All Cells');
 title('Data (All trials)');
 colorbar
 
-subplot(4, 4, [3 4 7 8])
-% plot(zAxis, fTracesMean(:, order))
-imagesc(zAxis, 1:nCells, fTracesMeanModel(:, order)');
-caxis(prctile(fTracesMean(:), climPrctiles))
-
+subplot(2, 2, 2)
+imagesc(zAxis, 1:nCells, meanAllModel(:, order)');
+caxis(prctile(meanAll(:), climPrctiles))
 axis xy
-% xlabel('z [cm]')
+xlabel('z [cm]')
 % ylabel('Cell #');
 title('SF Model (All trials)');
 colorbar
 
+subplot(2, 2, 3)
+imagesc((1:nBins)/nBins, 1:nCells, meanAllT(:, orderT)');
+% imagesc(zAxis, 1:nCells, meanAllT(:, orderProper)');
+caxis(prctile(meanAllT(:), climPrctiles))
+axis xy
+xlabel('t [a.u.]')
+ylabel('All Cells');
+title('Data (All trials)');
+colorbar
 
+subplot(2, 2, 4)
+imagesc((1:nBins)/nBins, 1:nCells, meanAllModelT(:, orderT)');
+caxis(prctile(meanAllT(:), climPrctiles))
+axis xy
+xlabel('t [a.u.]')
+% ylabel('Cell #');
+title('SF Model (All trials)');
+colorbar
+
+%%
 % meanL = csaps(zAxis, meanL', p, zAxis)';
 % meanR = csaps(zAxis, meanR', p, zAxis)';
 
