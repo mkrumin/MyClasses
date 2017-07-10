@@ -2,11 +2,12 @@ function plotSnakes(data, results)
 
 scaleByContrast = true;
 separateLRColormaps = false;
-climPrctiles = [10 99];
+climPrctiles = [50 99];
 margin = 0.0;
-cellClasses2Use = 's';
+cellClasses2Use = 'sad';
 nBins = 50;
 
+%% organizing the data
 nDatasets = length(data);
 for iDataset = 1:nDatasets
     fprintf('iDataset %d/%d\n', iDataset, nDatasets);
@@ -63,6 +64,10 @@ for iDataset = 1:nDatasets
 
     fVector = cell(nTrials, max(obj.Planes));
     tVector = cell(nTrials, max(obj.Planes));
+    preF = cell(nTrials, max(obj.Planes));
+    postF = cell(nTrials, max(obj.Planes));
+    preT = cell(nTrials, max(obj.Planes));
+    postT = cell(nTrials, max(obj.Planes));
 
     for iPlane = obj.Planes
         fprintf('iPlane %d\n', iPlane);
@@ -76,6 +81,8 @@ for iDataset = 1:nDatasets
         
         [~, ~, fVectorTmp, tVectorTmp] =...
             buildVectors(obj, idxAll, tData, fData);
+        [preF(:, iPlane), postF(:, iPlane), preT(:, iPlane), postT(:, iPlane)] = ...
+            buildVectorsPrePost(obj, idxAll, tData, fData);
         fVector(:, iPlane) = mat2cell(fVectorTmp, nSamples, size(fVectorTmp, 2));
         tVector(:, iPlane) = mat2cell(tVectorTmp, nSamples, 1);
         %             res{iPlane}
@@ -186,7 +193,11 @@ for iDataset = 1:nDatasets
     meanAll{iDataset} = nanmean(fTraces, 3);
     meanL{iDataset} = nanmean(fTraces(:,:,idxL), 3);
     meanR{iDataset} = nanmean(fTraces(:,:,idxR), 3);
-    
+
+    stdAll{iDataset} = std(fTraces, [], 3, 'omitnan');
+    stdL{iDataset} = std(fTraces(:,:,idxL), [], 3, 'omitnan');
+    stdR{iDataset} = std(fTraces(:,:,idxR), [], 3, 'omitnan');
+
     meanAllModel{iDataset} = nanmean(fTracesModel, 3);
     meanLModel{iDataset} = nanmean(fTracesModel(:,:,idxL), 3);
     meanRModel{iDataset} = nanmean(fTracesModel(:,:,idxR), 3);
@@ -199,19 +210,52 @@ for iDataset = 1:nDatasets
     meanLModelT{iDataset} = nanmean(fTracesModelT(:,:,idxL), 3);
     meanRModelT{iDataset} = nanmean(fTracesModelT(:,:,idxR), 3);
 
+    
+%     meanAll{iDataset} = nanmedian(fTraces, 3);
+%     meanL{iDataset} = nanmedian(fTraces(:,:,idxL), 3);
+%     meanR{iDataset} = nanmedian(fTraces(:,:,idxR), 3);
+%     
+%     meanAllModel{iDataset} = nanmedian(fTracesModel, 3);
+%     meanLModel{iDataset} = nanmedian(fTracesModel(:,:,idxL), 3);
+%     meanRModel{iDataset} = nanmedian(fTracesModel(:,:,idxR), 3);
+% 
+%     meanAllT{iDataset} = nanmedian(fTracesT, 3);
+%     meanLT{iDataset} = nanmedian(fTracesT(:,:,idxL), 3);
+%     meanRT{iDataset} = nanmedian(fTracesT(:,:,idxR), 3);
+%     
+%     meanAllModelT{iDataset} = nanmedian(fTracesModelT, 3);
+%     meanLModelT{iDataset} = nanmedian(fTracesModelT(:,:,idxL), 3);
+%     meanRModelT{iDataset} = nanmedian(fTracesModelT(:,:,idxR), 3);
+
 end % iDataset
 
 % average across trials to find mean response
 % use this to normalize the traces and to get latency;
 
+%% figure out what cells are responsive to the task
+[nTr, nPl] = size(preF);
+meanPreF = cell(nTr, nPl);
+meanPostF = cell(nTr, nPl);
+for iPl = 1:nPl
+    for iTr = 1:nTr
+        meanPreF{iTr, iPl} = mean(preF{iTr, iPl});
+        meanPostF{iTr, iPl} = mean(postF{iTr, iPl});
+    end
+end
+meanPreF = cell2mat(meanPreF);
+meanPostF = cell2mat(meanPostF);
+
+[hResponsive] = ttest(meanPreF, meanPostF, 'Tail', 'left', 'alpha', 0.05);
+respIdx = find(hResponsive);
+
 %% preparing for plotting
 meanAll = cell2mat(meanAll);
 meanL = cell2mat(meanL);
 meanR = cell2mat(meanR);
-nCells = size(meanAll, 2);
 meanAllT = cell2mat(meanAllT);
 meanLT = cell2mat(meanLT);
 meanRT = cell2mat(meanRT);
+
 meanAllModel = cell2mat(meanAllModel);
 meanLModel = cell2mat(meanLModel);
 meanRModel = cell2mat(meanRModel);
@@ -219,6 +263,21 @@ meanAllModelT = cell2mat(meanAllModelT);
 meanLModelT = cell2mat(meanLModelT);
 meanRModelT = cell2mat(meanRModelT);
 
+meanAll = meanAll(:, respIdx);
+meanL = meanL(:, respIdx);
+meanR = meanR(:, respIdx);
+meanAllT = meanAllT(:, respIdx);
+meanLT = meanLT(:, respIdx);
+meanRT = meanRT(:, respIdx);
+
+meanAllModel = meanAllModel(:, respIdx);
+meanLModel = meanLModel(:, respIdx);
+meanRModel = meanRModel(:, respIdx);
+meanAllModelT = meanAllModelT(:, respIdx);
+meanLModelT = meanLModelT(:, respIdx);
+meanRModelT = meanRModelT(:, respIdx);
+
+nCells = size(meanAll, 2);
 
 % h = mean(diff(zAxis));
 % p = 1/(1+h^3/0.6);
@@ -235,16 +294,30 @@ meanRModelT = cell2mat(meanRModelT);
 % 
 % meanAllModel = bsxfun(@minus, meanAllModel, minValues);
 % meanAllModel = bsxfun(@rdivide, meanAllModel, maxValues);
+% 
+% minValues = min(meanAllT);
+% meanAllT = bsxfun(@minus, meanAllT, minValues);
+% maxValues = max(meanAllT);
+% meanAllT = bsxfun(@rdivide, meanAllT, maxValues);
+% 
+% meanAllModelT = bsxfun(@minus, meanAllModelT, minValues);
+% meanAllModelT = bsxfun(@rdivide, meanAllModelT, maxValues);
 
 
 [~, latency] = max(meanAll);
 [orderedLatency, order] = sort(latency);
+% idxResponsive = ismember(order, find(hResponsive));
+% order = order(idxResponsive);
+% orderedLatency = orderedLatency(idxResponsive);
 orderProper = order(orderedLatency>1);
 [~, orderInv] = sort(order);
 
 [~, latencyT] = max(meanAllT);
 [orderedLatencyT, orderT] = sort(latencyT);
-orderProperT = orderT(orderedLatencyT>1);
+% idxResponsive = ismember(orderT, find(hResponsive));
+% orderT = orderT(idxResponsive);
+% orderedLatencyT = orderedLatencyT(idxResponsive);
+orderProperT = orderT(orderedLatencyT>2);
 [~, orderInvT] = sort(orderT);
 
 
@@ -253,7 +326,7 @@ orderProperT = orderT(orderedLatencyT>1);
 figure
 subplot(2, 2, 1)
 imagesc(zAxis, 1:nCells, meanAll(:, order)');
-% imagesc(zAxis, 1:nCells, meanAll(:, orderProper)');
+imagesc(zAxis, 1:nCells, meanAll(:, orderProper)');
 caxis(prctile(meanAll(:), climPrctiles))
 axis xy
 xlabel('z [cm]')
@@ -263,6 +336,7 @@ colorbar
 
 subplot(2, 2, 2)
 imagesc(zAxis, 1:nCells, meanAllModel(:, order)');
+imagesc(zAxis, 1:nCells, meanAllModel(:, orderProper)');
 caxis(prctile(meanAll(:), climPrctiles))
 axis xy
 xlabel('z [cm]')
@@ -272,29 +346,162 @@ colorbar
 
 subplot(2, 2, 3)
 imagesc((1:nBins)/nBins, 1:nCells, meanAllT(:, orderT)');
-% imagesc(zAxis, 1:nCells, meanAllT(:, orderProper)');
+imagesc((1:nBins)/nBins, 1:nCells, meanAllT(:, orderProperT)');
 caxis(prctile(meanAllT(:), climPrctiles))
 axis xy
-xlabel('t [a.u.]')
+xlabel('Normalized time [a.u.]')
 ylabel('All Cells');
 title('Data (All trials)');
 colorbar
 
 subplot(2, 2, 4)
 imagesc((1:nBins)/nBins, 1:nCells, meanAllModelT(:, orderT)');
+imagesc((1:nBins)/nBins, 1:nCells, meanAllModelT(:, orderProperT)');
 caxis(prctile(meanAllT(:), climPrctiles))
 axis xy
-xlabel('t [a.u.]')
+xlabel('Normalized Time [a.u.]')
 % ylabel('Cell #');
 title('SF Model (All trials)');
 colorbar
 
 %%
-% meanL = csaps(zAxis, meanL', p, zAxis)';
-% meanR = csaps(zAxis, meanR', p, zAxis)';
+tmpRes = [res{:}];
+for iCell = 1 :nCells
+% iCell = 57;
+set(gcf, 'Name', sprintf('iCell = %d', iCell))
+nRows = 3;
+nColumns = 3;
+traces = squeeze(fTraces(:, iCell, :));
+minF = min(traces(:));
+maxF = max(traces(:));
+% figure
+subplot(nRows, nColumns, 1)
+plot(1:nBins, traces(:, idxL))
+hold on;
+plot(1:nBins, mean(traces(:, idxL), 2), 'm', 'LineWidth', 3)
+plot(1:nBins, median(traces(:, idxL), 2), 'm:', 'LineWidth', 3)
+hold off
+ylim([minF, maxF]);
+xlim([1, nBins]);
+title('Left Trials');
+ylabel('Data');
 
-% meanLModel = csaps(zAxis, meanLModel', p, zAxis)';
-% meanRModel = csaps(zAxis, meanRModel', p, zAxis)';
+subplot(nRows, nColumns, 2);
+plot(1:nBins, traces(:, idxR));
+hold on;
+plot(1:nBins, mean(traces(:, idxR), 2), 'm', 'LineWidth', 3)
+plot(1:nBins, median(traces(:, idxR), 2), 'm:', 'LineWidth', 3)
+hold off
+ylim([minF, maxF]);
+xlim([1, nBins]);
+title('Right Trials');
+
+subplot(nRows, nColumns, 3);
+cla;
+meanL = mean(traces(:, idxL), 2);
+meanR = mean(traces(:, idxR), 2);
+semL = std(traces(:, idxL), [], 2)/sqrt(sum(idxL));
+semR = std(traces(:, idxR), [], 2)/sqrt(sum(idxR));
+alpha = 0.01;
+[hRight, pVal, ci] = ttest2(traces(:, idxL), traces(:, idxR), ...
+    'alpha', alpha, 'Dim', 2, 'Tail', 'left', 'Vartype', 'unequal');
+[hLeft, pVal, ci] = ttest2(traces(:, idxL), traces(:, idxR), ...
+    'alpha', alpha, 'Dim', 2, 'Tail', 'right', 'Vartype', 'unequal');
+
+plot(1:nBins, meanL, 'r', 'LineWidth', 1)
+hold on;
+plot(1:nBins, meanR, 'b', 'LineWidth', 1)
+xx = [1:nBins, nBins:-1:1]';
+yy = [meanL+semL; flipud(meanL-semL)];
+p = patch(xx, yy, 'r', 'FaceAlpha', 0.2, 'LineStyle', 'none');
+xx = [1:nBins, nBins:-1:1]';
+yy = [meanR+semR; flipud(meanR-semR)];
+p = patch(xx, yy, 'b', 'FaceAlpha', 0.2, 'LineStyle', 'none');
+scatter(find(hLeft), repmat(minF, size(find(hLeft))), [], 'r');
+scatter(find(hRight), repmat(minF, size(find(hRight))), [], 'b');
+hold off
+
+ylim([minF, maxF]);
+xlim([1, nBins]);
+legend('Left trials', 'Right trials')
+
+
+tracesM = squeeze(fTracesModel(:, iCell, :));
+
+subplot(nRows, nColumns, 4)
+plot(1:nBins, tracesM(:, idxL))
+hold on;
+plot(1:nBins, mean(tracesM(:, idxL), 2), 'c', 'LineWidth', 3)
+plot(1:nBins, median(tracesM(:, idxL), 2), 'c:', 'LineWidth', 3)
+hold off;
+ylim([minF, maxF]);
+xlim([1, nBins]);
+ylabel('Model');
+
+subplot(nRows, nColumns, 5);
+plot(1:nBins, tracesM(:, idxR));
+hold on;
+plot(1:nBins, mean(tracesM(:, idxR), 2), 'c', 'LineWidth', 3)
+plot(1:nBins, median(tracesM(:, idxR), 2), 'c:', 'LineWidth', 3)
+hold off
+ylim([minF, maxF]);
+xlim([1, nBins]);
+
+subplot(nRows, nColumns, 6)
+cla
+meanL = mean(tracesM(:, idxL), 2);
+meanR = mean(tracesM(:, idxR), 2);
+semL = std(tracesM(:, idxL), [], 2)/sqrt(sum(idxL));
+semR = std(tracesM(:, idxR), [], 2)/sqrt(sum(idxR));
+
+plot(1:nBins, meanL, 'r', 'LineWidth', 1)
+hold on;
+plot(1:nBins, meanR, 'b', 'LineWidth', 1)
+xx = [1:nBins, nBins:-1:1]';
+yy = [meanL+semL; flipud(meanL-semL)];
+p = patch(xx, yy, 'r', 'FaceAlpha', 0.2, 'LineStyle', 'none');
+xx = [1:nBins, nBins:-1:1]';
+yy = [meanR+semR; flipud(meanR-semR)];
+p = patch(xx, yy, 'b', 'FaceAlpha', 0.2, 'LineStyle', 'none');
+hold off
+ylim([minF, maxF]);
+xlim([1, nBins]);
+legend('Left trials', 'Right trials')
+
+subplot(nRows, nColumns, 7)
+plot(1:nBins, mean(traces(:, idxL), 2), 'm', 'LineWidth', 3)
+hold on;
+plot(1:nBins, median(traces(:, idxL), 2), 'm:', 'LineWidth', 3)
+plot(1:nBins, mean(tracesM(:, idxL), 2), 'c', 'LineWidth', 3)
+plot(1:nBins, median(tracesM(:, idxL), 2), 'c:', 'LineWidth', 3)
+hold off;
+ylim([minF, maxF]);
+xlim([1, nBins]);
+ylabel('Comparison');
+legend('mean Data', 'median', 'mean Model', 'median');
+
+subplot(nRows, nColumns, 8)
+plot(1:nBins, mean(traces(:, idxR), 2), 'm', 'LineWidth', 3)
+hold on;
+plot(1:nBins, median(traces(:, idxR), 2), 'm:', 'LineWidth', 3)
+plot(1:nBins, mean(tracesM(:, idxR), 2), 'c', 'LineWidth', 3)
+plot(1:nBins, median(tracesM(:, idxR), 2), 'c:', 'LineWidth', 3)
+hold off;
+ylim([minF, maxF]);
+xlim([1, nBins]);
+
+subplot(nRows, nColumns, 9)
+th = tmpRes(iCell).zThetaBinCentres{2};
+zz = tmpRes(iCell).zThetaBinCentres{1};
+imagesc(th, zz, tmpRes(iCell).zThetaMap)
+axis xy equal tight
+
+pause
+end
+
+
+%%
+
 
 % divide cells into two groups, based on the maximum F
 prefR = find(max(meanR)>(max(meanL)+margin));
@@ -303,23 +510,23 @@ prefL = find(max(meanL)>(max(meanR)+margin));
 % prefR = find(mean(meanR)-mean(meanL)>margin);
 % prefL = find(mean(meanR)-mean(meanL)<-margin);
 
-minValues(prefR) = nanmin(meanR(:, prefR));
-minValues(prefL) = nanmin(meanL(:, prefL));
-meanL = bsxfun(@minus, meanL, minValues);
-meanR = bsxfun(@minus, meanR, minValues);
-maxValues(prefR) = nanmax(meanR(:, prefR));
-maxValues(prefL) = nanmax(meanL(:, prefL));
-meanL = bsxfun(@rdivide, meanL, maxValues);
-meanR = bsxfun(@rdivide, meanR, maxValues);
-
-% minValues(prefR) = nanmin(meanRModel(:, prefR));
-% minValues(prefL) = nanmin(meanLModel(:, prefL));
-meanLModel = bsxfun(@minus, meanLModel, minValues);
-meanRModel = bsxfun(@minus, meanRModel, minValues);
-% maxValues(prefR) = nanmax(meanRModel(:, prefR));
-% maxValues(prefL) = nanmax(meanLModel(:, prefL));
-meanLModel = bsxfun(@rdivide, meanLModel, maxValues);
-meanRModel = bsxfun(@rdivide, meanRModel, maxValues);
+% minValues(prefR) = nanmin(meanR(:, prefR));
+% minValues(prefL) = nanmin(meanL(:, prefL));
+% meanL = bsxfun(@minus, meanL, minValues);
+% meanR = bsxfun(@minus, meanR, minValues);
+% maxValues(prefR) = nanmax(meanR(:, prefR));
+% maxValues(prefL) = nanmax(meanL(:, prefL));
+% meanL = bsxfun(@rdivide, meanL, maxValues);
+% meanR = bsxfun(@rdivide, meanR, maxValues);
+% 
+% % minValues(prefR) = nanmin(meanRModel(:, prefR));
+% % minValues(prefL) = nanmin(meanLModel(:, prefL));
+% meanLModel = bsxfun(@minus, meanLModel, minValues);
+% meanRModel = bsxfun(@minus, meanRModel, minValues);
+% % maxValues(prefR) = nanmax(meanRModel(:, prefR));
+% % maxValues(prefL) = nanmax(meanLModel(:, prefL));
+% meanLModel = bsxfun(@rdivide, meanLModel, maxValues);
+% meanRModel = bsxfun(@rdivide, meanRModel, maxValues);
 
 
 nCellsL = numel(prefL);
@@ -384,7 +591,9 @@ end
 % [~, latency] = max(meanL(:, prefR));
 % [~, orderPrefR] = sort(latency);
 
-subplot(4, 4, 9)
+figure
+
+subplot(2, 4, 1)
 imagesc(zAxis, 1:nCellsL, meanL(:, prefL(orderPrefL))');
 caxis(climsL);
 title('Left trials');
@@ -392,14 +601,14 @@ ylabel('Cells Prefer Left');
 axis xy
 colorbar;
 
-subplot(4, 4, 10)
+subplot(2, 4, 2)
 imagesc(zAxis, 1:nCellsL, meanR(:, prefL(orderPrefL))');
 caxis(climsL);
 title('Right trials');
 axis xy
 colorbar
 
-subplot(4, 4, 13)
+subplot(2, 4, 5)
 imagesc(zAxis, 1:nCellsR, meanL(:, prefR(orderPrefR))');
 caxis(climsR);
 ylabel('Cells prefer Right')
@@ -407,7 +616,7 @@ xlabel('z [cm]');
 axis xy
 colorbar;
 
-subplot(4, 4, 14)
+subplot(2, 4, 6)
 imagesc(zAxis, 1:nCellsR, meanR(:, prefR(orderPrefR))');
 caxis(climsR);
 xlabel('z [cm]');
@@ -416,7 +625,7 @@ colorbar
 
 % plotting the SF model-predicted 'snakes'
 
-subplot(4, 4, 11)
+subplot(2, 4, 3)
 imagesc(zAxis, 1:nCellsL, meanLModel(:, prefL(orderPrefL))');
 caxis(climsL);
 title('Left trials');
@@ -424,14 +633,14 @@ ylabel('Cells Prefer Left');
 axis xy
 colorbar;
 
-subplot(4, 4, 12)
+subplot(2, 4, 4)
 imagesc(zAxis, 1:nCellsL, meanRModel(:, prefL(orderPrefL))');
 caxis(climsL);
 title('Right trials');
 axis xy
 colorbar
 
-subplot(4, 4, 15)
+subplot(2, 4, 7)
 imagesc(zAxis, 1:nCellsR, meanLModel(:, prefR(orderPrefR))');
 caxis(climsR);
 ylabel('Cells prefer Right')
@@ -439,7 +648,7 @@ xlabel('z [cm]');
 axis xy
 colorbar;
 
-subplot(4, 4, 16)
+subplot(2, 4, 8)
 imagesc(zAxis, 1:nCellsR, meanRModel(:, prefR(orderPrefR))');
 caxis(climsR);
 xlabel('z [cm]');
@@ -447,4 +656,17 @@ axis xy
 colorbar
 
 %%
+
+figure
+iCell = 1;
+subplot(1, 2, 1)
+plot(zAxis, squeeze(fTraces(:, iCell, idxL)));
+title('Went Left Trials');
+xlabel('z [cm]');
+ylabel('\DeltaF/F_0')
+subplot(1, 2, 2)
+plot(zAxis, squeeze(fTraces(:, iCell, idxR)));
+title('Went Right Trials')
+xlabel('z [cm]');
+
 % keyboard;
